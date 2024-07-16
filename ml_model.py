@@ -1,0 +1,237 @@
+import os
+import datetime as dt
+
+import keras
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import ParameterGrid
+from sklearn.neighbors import KNeighborsRegressor
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from sklearn.metrics import mean_squared_error, mean_absolute_percentage_error, r2_score, root_mean_squared_error
+
+rfr_params = {'max_depth': [3,5], 'max_features': [5,6,7], 'n_estimators': [200]}
+
+gbr_params = {'max_features': [5,6,7],
+              'learning_rate':[0.01],
+              'n_estimators':[200],
+              'subsample':[0.6],
+              'random_state':[42]}
+
+class ml_model:
+
+    def __init__(self, data, log_results=False, log_file_path='ml_log'):
+        self.data = data.replace(np.inf, np.nan)
+        self.data = self.data.dropna()
+        self.feats = self.data.columns
+        self.model = None
+
+        self.params = {}
+        if type(self.data.index) == pd.DatetimeIndex:
+            self.data.index = range(0, self.data.shape[0])  # Cleans NAs and drops DateTimeIndex
+
+        self.x_train, self.y_train, self.x_test, self.y_test, self.train_predict, self.test_predict = \
+            [None] * 6  # Vars for future use
+
+    def evaluate_model(self, log_file='rfr_log.csv', sorted_features=False,features=None):
+        pred_std_dev = np.std(self.test_predict)
+        evaluation_results = \
+            {
+                'eval_datetime': [pd.Timestamp.today()],
+                'r2_score': [r2_score(self.y_test, self.test_predict)],
+                'mse': [mean_squared_error(self.y_test, self.test_predict)],
+                'rmse': [root_mean_squared_error(self.y_test, self.test_predict)],
+                'rmse/sd': [root_mean_squared_error(self.y_test, self.test_predict)/pred_std_dev],
+                'mape': [mean_absolute_percentage_error(self.y_test, self.test_predict)/1000000]
+            }
+        if sorted_features:
+            evaluation_results.update({'features': [features]})
+        else: evaluation_results.update({'features': [self.feats] })
+
+        if not os.path.isfile(log_file):
+            log_df = pd.DataFrame(columns=evaluation_results.keys()).set_index('eval_datetime')
+
+        else:
+            log_df = pd.read_csv(log_file, index_col=['eval_datetime'], infer_datetime_format=True)
+
+        log_df.loc[pd.Timestamp.now()] = evaluation_results
+        log_df.to_csv(log_file)
+
+        print(evaluation_results)
+
+        return evaluation_results
+
+    def plot_predictions(self, training_pred=False, test_pred=True):
+        if training_pred and test_pred:
+            fig, ax = plt.subplots(2)
+            ax[0].scatter(self.y_train, self.train_predict, label='train')
+            ax[1].scatter(self.y_test, self.test_predict, label='test')
+
+        elif training_pred and not test_pred:
+            plt.scatter(self.y_train, self.train_predict)
+
+        elif test_pred and not training_pred: plt.scatter(self.y_test, self.test_predict)
+
+        plt.show()
+
+        return None
+
+    def ml_training_dfs(self, feats, target_col, train_size=0.80,scale_x=True, scale_type='standard'):
+        train_len = int(self.data.shape[0] * train_size)
+        self.feats = feats
+        x_data = np.array(self.data[feats])
+        y_data = np.array(self.data[target_col]) # Target data
+        if scale_x:
+            scale = StandardScaler()
+            x_data = scale.fit_transform(x_data)
+
+        self.x_train = x_data[:train_len]
+        self.y_train = y_data[:train_len]
+        self.x_test = x_data[train_len:]
+        self.y_test = y_data[train_len:]
+
+
+        return [self.x_train, self.y_train], [self.x_test, self.y_test]  # returns two lists containing
+        # train data, test data
+
+    def tree_model(self, parameter_dict,gbr=False, plot_pred=True, plot_importances=True, save_params=False,
+                  params_file='rfr_params.csv', evaluate_model=True, eval_log='model_eval.csv'):
+        test_scores = []
+        rmse_scores = []
+
+        if not gbr:
+            model = RandomForestRegressor(n_estimators=200)
+            name = 'rfr'
+        else:
+            model = GradientBoostingRegressor(n_estimators=200)
+            name = 'gbr'
+
+        for g in ParameterGrid(parameter_dict):
+            model.set_params(**g)
+            model.fit(self.x_train, self.y_train)
+            test_scores.append(model.score(self.x_train, self.y_train))
+            rmse_scores.append(root_mean_squared_error(self.y_test, model.predict(self.x_test)))
+
+        best_idx = np.argmax(test_scores)
+        best_rmse = np.argmin(rmse_scores)
+        print(f'best score: {test_scores[best_idx]}\n')
+        print(f'best settings {ParameterGrid(parameter_dict)[best_idx]}\n')
+        print(f'remaining scores:{test_scores}')
+        print(f'Best RMSE: {rmse_scores[best_rmse]}')
+        print(f'best rmse settings: {ParameterGrid(parameter_dict)[best_rmse]}')
+        self.params.update({name: ParameterGrid(parameter_dict)[best_idx]})
+
+        model.set_params(**self.params[name])
+        self.model = model
+        self.train_predict = model.predict(self.x_train)
+        self.test_predict = model.predict(self.x_test)
+
+        if plot_pred:
+            if plot_importances:
+                fig, ax = plt.subplots(3)
+                importance = model.feature_importances_
+                sorted_idx = np.argsort(importance)[::-1]
+                x = range(len(importance))
+                labels = np.array(self.feats)[sorted_idx]
+                ax[2].bar(x, importance[sorted_idx], tick_label=labels)
+                ax[0].scatter(self.y_train, self.train_predict, label='train')
+                ax[1].scatter(self.y_test, self.test_predict, label='test')
+
+            else:
+                self.plot_predictions(training_pred=True, test_pred=True)
+        else:
+            if plot_importances:
+                importance = model.feature_importances_
+                sorted_idx = np.argsort(importance)[::-1]
+                x = range(len(importance))
+                labels = np.array(self.feats)[sorted_idx]
+                plt.bar(x, importance, tick_label=labels)
+
+        if save_params:
+            params = pd.DataFrame(data=self.params[name], index=[pd.Timestamp.today()]).to_csv(params_file)
+
+        if evaluate_model:
+            self.evaluate_model(sorted_features=labels, log_file=eval_log)
+
+        return self.model
+
+    def neighbors_model(self,n_start, n_end, plot_pred=True,
+                        evaluate_model=True, eval_log='model_eval.csv'):
+        results_df = pd.DataFrame(columns=['train_r2', 'test_r2', 'n_neighbors'], index=range(n_start, n_end))
+        for n in range(n_start, n_end):
+            knn = KNeighborsRegressor(n_neighbors=n)
+            knn.fit(self.x_train, self.y_train)
+            results_df['n_neighbors'].loc[n] = n
+            results_df['train_r2'].loc[n] = knn.score(self.x_train, self.y_train)
+            results_df['test_r2'].loc[n] = knn.score(self.x_test, self.y_test)
+
+        sorted_models = np.argsort(results_df['test_r2'])[::-1]
+        best_neighbors = results_df['n_neighbors'].iloc[sorted_models].iloc[0]
+
+        knn.n_neighbors = best_neighbors
+
+        self.model = knn
+        self.train_predict = self.model.predict(self.x_train)
+        self.test_predict = self.model.predict(self.x_test)
+
+        if evaluate_model:
+            self.evaluate_model(eval_log)
+        if plot_pred:
+            self.plot_predictions(test_pred=True, training_pred=True)
+
+        return self.model
+
+import tensorflow as tf
+from keras._tf_keras.keras import losses
+from keras._tf_keras.keras.models import Sequential
+from keras._tf_keras.keras.layers import Dense, Dropout
+
+
+def sign_penalty(y_true, y_pred):
+    penalty = 100.
+    loss = tf.where(tf.less(y_true * y_pred, 0), \
+        penalty * tf.square(y_true - y_pred), \
+        tf.square(y_true - y_pred))
+
+    return  tf.reduce_mean(loss, axis=-1)
+
+class nn_model(ml_model):
+    def __init__(self, data):
+
+        keras.losses.sign_penalty = sign_penalty
+
+        super().__init__(data)
+
+        return None
+
+    def sequential_model(self, layer_1=100, layer_2=20, layer_3=1, dropout_rate=0.2, plot_loss=True, plot_pred=True, evaluate_model=False, log_file='seq_mod.csv'):
+
+        base_model = Sequential()
+        base_model.add(Dense(layer_1, input_dim=self.x_train.shape[1], activation='relu'))
+        base_model.add(Dropout(0.2))
+        base_model.add(Dense(layer_2, activation='relu'))
+        base_model.add(Dense(layer_3, activation='linear'))
+
+        base_model.compile(optimizer='adam', loss='mse')
+
+        history = base_model.fit(self.x_train, self.y_train, epochs=25)
+
+        self.train_predict = base_model.predict(self.x_train)
+        self.test_predict = base_model.predict(self.x_test)
+
+        if plot_loss:
+            plt.plot(history.history['loss'])
+            plt.title('loss:'+str(round(history.history['loss'][-1], 6)))
+
+        if plot_pred:
+            self.plot_predictions(training_pred=True, test_pred=True)
+        if evaluate_model:
+            self.evaluate_model(log_file=log_file)
+
+        self.model = base_model
+
+        return self
+
+

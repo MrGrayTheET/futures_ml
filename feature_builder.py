@@ -35,7 +35,7 @@ class model_prep:
 
     def add_SMA(self, period=50):
         self.data[str(period)+'SMA'] = self.closes.rolling(period).mean()
-        self.data[str(period)+'SMA_norm'] = self.data[str(period)+'SMA']/self.closes
+        self.data[str(period)+'SMA_norm'] = (self.data[self.close_col] - self.data[str(period)+'SMA'])/self.closes
 
         return self.data
 
@@ -46,6 +46,7 @@ class model_prep:
     def volume_features(self, change_period=1, sma_period=5, volume_col='Volume'):
         self.data[str(change_period) + '_period_' + volume_col + '_pct_change'] = \
             self.data[volume_col].pct_change()
+
         self.data[volume_col+'_change_'+str(sma_period)+'_SMA'] =\
             self.data[str(change_period) + '_period_' + volume_col + '_pct_change'].rolling(sma_period).mean()
         return self.data
@@ -59,6 +60,7 @@ class model_prep:
         df['Delta'] = (df[ask_volume] - df[bid_volume])
         df['Delta_SMA'] = df['Delta'].rolling(sma_len).mean()
         df['avg_size'] = df[volume]/df[self.num_trades_col]
+
         return df
 
     def prev_day_ret(self, offset=dt.timedelta(hours=-7) ):
@@ -68,7 +70,7 @@ class model_prep:
         return self.data
 
     def supply_demand_zone(self,timeframe='1d', offset=dt.timedelta(hours=-9), drop_non_normals=True):
-        pd_prices = self.data.resample('1d').apply(self.logic).shift(1)
+        pd_prices = self.data.resample(timeframe).apply(self.logic).shift(1)
         new_cols = ['D1', 'D2', 'S1', 'S2']
         high_close = np.where(pd_prices[self.open_col] < pd_prices[self.close_col])
         low_close = np.where(pd_prices[self.open_col] > pd_prices[self.close_col])
@@ -78,6 +80,7 @@ class model_prep:
         self.data['S2'] = pd_prices[self.high_col]
         self.data['H-L'] = self.data[self.high_col] - self.data[self.low_col]
 
+
         self.data = self.data.fillna(method='ffill')
 
         for i in new_cols:
@@ -86,6 +89,65 @@ class model_prep:
         if drop_non_normals == True:
             self.data = self.data.drop(columns=new_cols)
         return self.data
+
+    def range_bound(self, timeframe, offset=dt.timedelta(hours=-9)):
+        daily_prices = self.data.resample(timeframe, offset=offset).apply(self.logic)
+        week_prices = daily_prices.resample('1w').apply(self.logic, offset='12h')
+        prev_week_prices = week_prices.shift(1)
+        self.pw_prices = prev_week_prices
+        daily_prices['PW_High'] = prev_week_prices['High']
+        daily_prices['PW_Low'] = prev_week_prices['Low']
+        pd_prices = daily_prices.shift(1)
+        IB_days = (daily_prices[self.close_col] > pd_prices[self.low_col]) & (daily_prices[self.close_col] < pd_prices[self.high_col])
+        within_pw_lvls = (daily_prices[self.high_col] < daily_prices['PW_High']) & (daily_prices[self.low_col] > daily_prices['PW_Low'])
+
+        range_bound_days = daily_prices[IB_days | within_pw_lvls]
+
+        return range_bound_days
+
+
+
+
+
+    def opening_range(self, range_start='08:30:00', range_end_time='09:30:00', resample_len='1h',offset='30min',normalize=True, drop_non_normals=False):
+        start_time = dt.datetime.strptime(range_start, '%H:%M:%S').time()
+        range_end = dt.datetime.strptime(range_end_time, '%H:%M:%S').time()
+        non_normals = ['OR High', 'OR Low']
+        range_df = pd.DataFrame(columns=non_normals, index=self.data.loc[range_end].index)
+        opening_range_data = self.data.loc[start_time:range_end].resample(resample_len, offset=offset).apply(self.logic)
+        range_df['OR High'] = opening_range_data['High']
+        range_df['OR Low'] = opening_range_data['Low']
+        self.data['OR High'] = range_df['OR High']
+        self.data['OR Low'] = range_df['OR Low']
+        self.data['OR vol'] = (self.data['OR High'] - self.data['OR Low'])/self.data[self.close_col]
+        self.data = self.data.fillna(method='ffill')
+        if normalize:
+            self.data['OR High_norm'] = (self.closes - self.data['OR High'])/self.closes
+            self.data['OR Low_norm'] = (self.closes - self.data['OR Low'])/self.closes
+
+            if drop_non_normals:
+                self.data = self.data.drop(columns=non_normals)
+
+        return self.data
+
+
+
+    def dt_features(self, month=False, dayofweek=True, day=False, hour=True):
+
+        if month:
+            self.data['month'] = self.data.index.month
+        if dayofweek:
+            self.data['dayofweek'] = self.data.index.dayofweek
+        if day:
+            self.data['day'] = self.data.index.day
+        if hour:
+            self.data['hour'] = self.data.index.hour
+
+        return self.data
+
+
+
+
 
 
 class portfolio_features:
@@ -124,6 +186,8 @@ class portfolio_features:
         self.ret_df[list(zip(['weighted_ret'] * len(self.tickers), self.tickers))] = self.ret_df.weight * self.ret_df.ret
         self.ret_df['cumulative_port'] = (1+self.ret_df['portfolio_ret']).cumprod()
         return self.ret_df
+
+
     
 def feature_corr_map(data):
     corr = data.corr()

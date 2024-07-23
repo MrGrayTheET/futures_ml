@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from utils import clean_arrays
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
 
 class lstm(nn.Module):
@@ -15,8 +16,8 @@ class lstm(nn.Module):
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True, dropout=0.2)
-        self.fc_1 = nn.Linear(hidden_size, 64)
-        self.fc_2 = nn.Linear(64, num_classes)
+        self.fc_1 = nn.Linear(hidden_size, 128)
+        self.fc_2 = nn.Linear(128, num_classes)
         self.relu = nn.ReLU()
 
     def forward(self, x):
@@ -52,4 +53,19 @@ def training_loop(n_epochs, lstm, optimizer, loss_func, X_train, y_train, X_test
 
             return lstm(X_train), lstm(X_test)
 
+
+
+def plot_final_prediction(test_x, test_y, y_scaler, lstm):
+    '''
+        test_predict : LSTM prediction result
+         test_true: torch tensor containing true values
+         '''
+    forecast = lstm(test_x[-1].unsqueeze(0))
+    forecast = y_scaler.inverse_transform(forecast.detach().numpy())
+    forecast = forecast[0].tolist()
+    final_true = test_y[-1].detach().numpy()
+    final_true = y_scaler.inverse_transform(final_true.reshape(1,-1))
+    final_true = final_true[0].tolist()
+    plt.plot(final_true, label='Actual')
+    plt.plot(forecast, label='Predicted')
 

@@ -152,3 +152,7 @@ class sierra_charts:
         datetime_series = pd.to_datetime(datetime_series, format='mixed')
         df = df.drop(columns=[date_col, time_col]).set_index(datetime_series)
         return df
+
+
+def mad(d, axis=None):
+    return np.mean(np.absolute(d - np.mean(d, axis)), axis)

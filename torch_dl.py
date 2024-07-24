@@ -66,6 +66,6 @@ def plot_final_prediction(test_x, test_y, y_scaler, lstm):
     final_true = test_y[-1].detach().numpy()
     final_true = y_scaler.inverse_transform(final_true.reshape(1,-1))
     final_true = final_true[0].tolist()
-    plt.plot(final_true, label='Actual')
-    plt.plot(forecast, label='Predicted')
+    plt.plot(final_true, label='Actual', color='blue')
+    plt.plot(forecast, label='Predicted', color='red)
 

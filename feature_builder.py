@@ -7,7 +7,7 @@ import yfinance as yf
 import datetime as dt
 from pywt import waverec, wavedec
 import seaborn as sns
-from np_functions import mad
+from utils import mad
 
 
 

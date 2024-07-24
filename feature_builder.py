@@ -10,7 +10,6 @@ import seaborn as sns
 from utils import mad
 
 
-
 class model_prep:
 
     def __init__(self, data, ohlc=['Open', 'High', 'Low', 'Close'], volumes=['Volume', 'BidVolume', 'AskVolume', 'NumberOfTrades']):
@@ -36,9 +35,15 @@ class model_prep:
         return self.data
 
     def add_SMA(self, period=50):
-        self.data[str(period)+'SMA'] = self.closes.rolling(period).mean()
+        self.data[str(period)+'SMA'] = self.closes.rolling(period, min_periods=2).mean()
         self.data[str(period)+'SMA_norm'] = (self.data[self.close_col] - self.data[str(period)+'SMA'])/self.closes
 
+        return self.data
+
+    def add_daily_SMA(self, period=20, offset='-8h'):
+        daily_prices = self.data.resample('1d', offset=offset).apply(self.logic)
+        self.data[str(period)+'d_'+'SMA'] = daily_prices[self.close_col].rolling(period, min_periods=2).mean()
+        self.data = self.data.fillna(method='ffill')
         return self.data
 
     def add_RSI(self,period=14):

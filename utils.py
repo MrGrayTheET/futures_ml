@@ -97,10 +97,10 @@ def plot_predictions(train_predict, test_predict, y_train, y_test, y_scaler):
         test_true.append(test_y[i][0])
 
     fig, ax= plt.subplots(2)
-    ax[0].plot(train_pred, label='predicted')
-    ax[0].plot(train_true, label='Actual')
-    ax[1].plot(test_true, label='Actual')
-    ax[1].plot(test_pred, label='Predicted')
+    ax[0].plot(train_pred, label='predicted', color='red')
+    ax[0].plot(train_true, label='Actual', color='blue')
+    ax[1].plot(test_true, label='Actual', color='blue')
+    ax[1].plot(test_pred, color='red')
     plt.show()
 
 

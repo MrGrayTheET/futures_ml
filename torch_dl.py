@@ -3,7 +3,7 @@ import torch
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from utils import clean_arrays
+from futures_ml.utils import clean_arrays
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
 

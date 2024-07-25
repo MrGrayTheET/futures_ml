@@ -40,10 +40,14 @@ class model_prep:
 
         return self.data
 
-    def add_daily_SMA(self, period=20, offset='-8h'):
+    def add_daily_SMA(self, period=20, offset='-8h', normalize=False, drop_non_normals=True):
         daily_prices = self.data.resample('1d', offset=offset).apply(self.logic)
         self.data[str(period)+'d_'+'SMA'] = daily_prices[self.close_col].rolling(period, min_periods=2).mean()
         self.data = self.data.fillna(method='ffill')
+        if normalize:
+            self.data[str(period)+'d_'+'SMA'+'_norm'] = (self.data[self.close_col] - self.data[str(period)+'d_'+'SMA'])/self.closes
+            if drop_non_normals:
+                self.data = self.data.drop(columns=[str(period)+'d_'+'SMA'])
         return self.data
 
     def add_RSI(self,period=14):
@@ -169,6 +173,12 @@ class model_prep:
         return denoised, coeff
 
 
+    def add_new_series(self, data, columns, names):
+
+        self.data[names] = data[columns].drop_duplicates()
+        self.data = self.data.fillna(method='ffill')
+
+        return self.data
 
 class portfolio_features:
 
@@ -208,7 +218,7 @@ class portfolio_features:
         return self.ret_df
 
 
-    
+
 def feature_corr_map(data):
     corr = data.corr()
     map = sns.heatmap(corr)

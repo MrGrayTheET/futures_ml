@@ -3,8 +3,6 @@ import torch
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from utils import clean_arrays
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
 
 class lstm(nn.Module):
@@ -16,8 +14,8 @@ class lstm(nn.Module):
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True, dropout=0.2)
-        self.fc_1 = nn.Linear(hidden_size, 128)
-        self.fc_2 = nn.Linear(128, num_classes)
+        self.fc_1 = nn.Linear(hidden_size, 64)
+        self.fc_2 = nn.Linear(64, num_classes)
         self.relu = nn.ReLU()
 
     def forward(self, x):
@@ -52,8 +50,6 @@ def training_loop(n_epochs, lstm, optimizer, loss_func, X_train, y_train, X_test
         if epoch ==  n_epochs:
 
             return lstm(X_train), lstm(X_test)
-
-
 
 def plot_final_prediction(test_x, test_y, y_scaler, lstm):
     '''
